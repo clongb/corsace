@@ -7,12 +7,19 @@ export default function doAllPlayersHaveCorrectMods (mpLobby: BanchoLobby, slotM
         return true;
 
     const allowedMods = getMappoolSlotMods(slotMod.allowedMods);
-    if (
-        mpLobby.slots.some(slot => 
-            slot.mods.some(mod => 
-                !allowedMods.some(allowedMod => allowedMod.enumValue === mod.enumValue)
-            )
+    if (allowedMods.length === 0)
+        // Any slot that exists and doesn't have NoFail is invalid
+        return !mpLobby.slots.some(slot => 
+            slot &&
+            !slot.mods.some(mod => mod.enumValue === 1)
+        );
+
+    return !mpLobby.slots.some(slot => 
+        slot &&
+        (
+            !slot.mods.some(mod => mod.enumValue === 1) ||
+            slot.mods.some(mod => !allowedMods.some(allowedMod => allowedMod.enumValue === mod.enumValue)) ||
+            allowedMods.filter(mod => mod.enumValue !== 1).every(allowedMod => !slot.mods.some(mod => mod.enumValue === allowedMod.enumValue))
         )
-    )
-        return false;
+    );
 }

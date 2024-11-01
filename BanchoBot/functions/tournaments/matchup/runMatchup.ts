@@ -34,6 +34,7 @@ import { publishSettings } from "./centrifugo";
 import assignTeamsToNextMatchup from "../../../../Server/functions/tournaments/matchups/assignTeamsToNextMatchup";
 import { MatchupSet } from "../../../../Models/tournaments/matchupSet";
 import { MapStatus } from "../../../../Interfaces/matchup";
+import { sleep } from "../../../../Server/utils/sleep";
 import { publish } from "../../../../Server/functions/centrifugo";
 
 const winConditions = {
@@ -92,7 +93,7 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
     await matchup.save();
     log(matchup, `Saved matchup lobby to DB with mp ID ${mpLobby.id}`);
 
-    await publish(centrifugoChannel, {
+    publish(centrifugoChannel, {
         type: "created",
         mpID: mpLobby.id,
         baseURL,
@@ -142,7 +143,6 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
     }
 
     const users = await allAllowedUsersForMatchup(matchup);
-    const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
     // Periodically save messages every 15 seconds
     const saveMessages = async () => {
@@ -244,7 +244,7 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
         matchupMessage.user = user;
         matchup.messages!.push(matchupMessage);
 
-        await publish(centrifugoChannel, {
+        publish(centrifugoChannel, {
             type: "message",
             timestamp: matchupMessage.timestamp,
             content: matchupMessage.content,
@@ -344,7 +344,7 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
                 await mpChannel.sendMessage(`${matchup.sets![matchup.sets!.length - 1].first?.name} is considered team 1 so theyll be ${orderString}`);
             }
 
-            await publish(centrifugoChannel, {
+            publish(centrifugoChannel, {
                 type: "first",
                 first: matchup.sets![matchup.sets!.length - 1].first?.ID,
             });
@@ -418,15 +418,16 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
             started = true;
             await mpChannel.sendMessage("matchup's now starting (captains dont need to stay in lobby)");
 
-            await pause(leniencyTime);
+            await sleep(leniencyTime);
             try {
                 log(matchup, "Picking map");
                 await loadNextBeatmap(matchup, mpLobby, mpChannel, pools, false);
-                log(matchup, `Map picked: ${mpLobby.beatmapId} with mods ${mpLobby.mods.map(mod => mod.shortMod).join(", ")}`);
+                log(matchup, `Map picked: ${mpLobby.beatmapId} with mods ${mpLobby.mods?.map(mod => mod.shortMod).join(", ") || "freemod"}`);
                 autoStart = true;
             } catch (ex) {
                 await mpChannel.sendMessage(`Error loading beatmap: ${ex}`);
                 log(matchup, `Error loading beatmap: ${ex}`);
+                console.log(ex);
             }
         } else if (
             (
@@ -447,7 +448,7 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
     });
 
     // Beatmap change event
-    mpLobby.on("beatmapId", async (beatmapID) => await publish(centrifugoChannel, { type: "beatmap", beatmapID }));
+    mpLobby.on("beatmapId", (beatmapID) => publish(centrifugoChannel, { type: "beatmap", beatmapID }));
 
     // Player joined event
     mpLobby.on("playerJoined", async (joinInfo) => {
@@ -470,7 +471,7 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
         playersInLobby.push(newPlayer);
         log(matchup, `Player ${newPlayer.user.username} joined the lobby`);
 
-        await publishSettings(matchup, mpLobby.slots);
+        publishSettings(matchup, mpLobby.slots);
 
         if (started || mpLobby.playing || !state.matchups[matchup.ID].autoRunning)
             return;
@@ -478,12 +479,12 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
         if (
             (
                 matchup.stage!.stageType === StageType.Qualifiers &&
-                matchup.teams!.some(team => !mpLobby.slots.some(m => m !== null && m.user.id.toString() === team.captain.osu.userID))
+                matchup.teams!.some(team => !mpLobby.slots.some(m => m?.user.id.toString() === team.captain.osu.userID))
             ) ||
             (
                 matchup.stage!.stageType !== StageType.Qualifiers &&
-                !mpLobby.slots.some(m => m !== null && m.user.id.toString() === matchup.team1!.captain.osu.userID) &&
-                !mpLobby.slots.some(m => m !== null && m.user.id.toString() === matchup.team2!.captain.osu.userID)
+                !mpLobby.slots.some(m => m?.user.id.toString() === matchup.team1!.captain.osu.userID) &&
+                !mpLobby.slots.some(m => m?.user.id.toString() === matchup.team2!.captain.osu.userID)
             )
         ) {
             await mpChannel.sendMessage(`${newPlayer.user.username} waiting for all ${matchup.stage!.tournament.matchupSize === 1 ? "players" : "captains"} to be here before matchup starts`);
@@ -498,7 +499,7 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
             await mpChannel.sendMessage("all captains now exist");
             await mpChannel.sendMessage("to get the first map up earlier, have a captain type \"!start\"");
             await mpChannel.sendMessage(`otherwise, the matchup is scheduled to start at ${matchup.date.toLocaleString("en-US", { timeZone: "UTC" })}`);
-            await pause(matchup.date.getTime() - Date.now());
+            await sleep(matchup.date.getTime() - Date.now());
             if (started)
                 return;
         }
@@ -507,15 +508,16 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
         await mpChannel.sendMessage(`matchup has started (only ${matchup.stage!.tournament.matchupSize} players per map)`);
         await mpChannel.sendMessage("captains don't need to stay if they're not playing");
 
-        await pause(leniencyTime);
+        await sleep(leniencyTime);
         try {
             log(matchup, "Picking map");
             await loadNextBeatmap(matchup, mpLobby, mpChannel, pools, false);
-            log(matchup, `Map picked: ${mpLobby.beatmapId} with mods ${mpLobby.mods.map(mod => mod.shortMod).join(", ")}`);
+            log(matchup, `Map picked: ${mpLobby.beatmapId} with mods ${mpLobby.mods?.map(mod => mod.shortMod).join(", ") || "freemod"}`);
             autoStart = true;
         } catch (ex) {
             await mpChannel.sendMessage(`Error loading beatmap: ${ex}`);
             log(matchup, `Error loading beatmap: ${ex}`);
+            console.log(ex);
         }
     });
 
@@ -526,7 +528,7 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
 
         log(matchup, `Player ${player.user.username} left the lobby`);
 
-        await publishSettings(matchup, mpLobby.slots);
+        publishSettings(matchup, mpLobby.slots);
 
         if (!state.matchups[matchup.ID].autoRunning)
             return;
@@ -544,16 +546,16 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
     });
 
     // Player changed team event
-    mpLobby.on("playerChangedTeam", async () => await publishSettings(matchup, mpLobby.slots));
+    mpLobby.on("playerChangedTeam", () => publishSettings(matchup, mpLobby.slots));
 
     // Player moved event
-    mpLobby.on("playerMoved", async () => await publishSettings(matchup, mpLobby.slots));
+    mpLobby.on("playerMoved", () => publishSettings(matchup, mpLobby.slots));
 
     // Mods event
-    mpLobby.on("mods", async () => await publishSettings(matchup, mpLobby.slots));
+    mpLobby.on("mods", () => publishSettings(matchup, mpLobby.slots));
 
     // Freemod event
-    mpLobby.on("freemod", async () => await publishSettings(matchup, mpLobby.slots));
+    mpLobby.on("freemod", () => publishSettings(matchup, mpLobby.slots));
 
     // All players ready event
     mpLobby.on("allPlayersReady", async () => {
@@ -562,7 +564,7 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
 
         await mpLobby.updateSettings();
 
-        await publishSettings(matchup, mpLobby.slots);
+        publishSettings(matchup, mpLobby.slots);
 
         if (mapsPlayed.some(m => m.beatmap!.ID === mpLobby.beatmapId) || !state.matchups[matchup.ID].autoRunning)
             return;
@@ -583,7 +585,7 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
             return;
         }
         if (!doAllPlayersHaveCorrectMods(mpLobby, slotMod)) {
-            await mpChannel.sendMessage(`someone has the wrong mods on for this slot (Allowed mods are ${getMappoolSlotMods(slotMod.allowedMods).map(m => `${m.longMod} (${m.shortMod})`).join(", ")})`);
+            await mpChannel.sendMessage(`Someone has the wrong mods on for this slot, or is missing NoFail (NF). Allowed mods (alongside requiring NF) are ${typeof slotMod.allowedMods === "number" && slotMod.allowedMods > 1 ? getMappoolSlotMods(slotMod.allowedMods & (~1)).map(m => `${m.longMod} (${m.shortMod.toUpperCase()})`).join(", ") : "any desired mods"}`);
             return;
         }
 
@@ -593,7 +595,7 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
         mapTimerStarted = true;
     });
 
-    mpLobby.on("matchAborted", async () => {
+    mpLobby.on("matchAborted", () => {
         if (!state.matchups[matchup.ID])
             return;
 
@@ -602,7 +604,7 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
         matchStart = undefined;
         mapsPlayed = mapsPlayed.filter(m => m.beatmap!.ID !== mpLobby.beatmapId);
 
-        await publish(centrifugoChannel, { type: "matchAborted" });
+        publish(centrifugoChannel, { type: "matchAborted" });
 
         if (!state.matchups[matchup.ID].autoRunning)
             return;
@@ -645,7 +647,7 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
 
         playersPlaying = playersInLobby;
 
-        await publish(centrifugoChannel, { type: "matchStarted" });
+        publish(centrifugoChannel, { type: "matchStarted" });
     });
 
     mpLobby.on("matchFinished", async () => {
@@ -736,7 +738,7 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
         log(matchup, `Matchup map and scores saved with matchupMap ID ${matchupMap.ID}`);
 
         const mappoolSlot = pools.flatMap(pool => pool.slots).find(slot => slot.maps.some(map => map.ID === beatmap.ID));
-        await publish(centrifugoChannel, {
+        publish(centrifugoChannel, {
             type: "matchFinished",
             setTeam1Score: matchup.sets?.[(matchup.sets?.length || 1) - 1]?.team1Score ?? 0,
             setTeam2Score: matchup.sets?.[(matchup.sets?.length || 1) - 1]?.team2Score ?? 0,
@@ -778,17 +780,18 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
                 const end = await loadNextBeatmap(matchup, mpLobby, mpChannel, pools, true);
                 if (end) {
                     await mpChannel.sendMessage(`no more maps to play, closing lobby in ${leniencyTime / 1000} seconds`);
-                    await pause(leniencyTime);
+                    await sleep(leniencyTime);
                     if (!state.matchups[matchup.ID].autoRunning)
                         return;
                     await mpLobby.closeLobby();
                     return;
                 }
-                log(matchup, `Map picked: ${mpLobby.beatmapId} with mods ${mpLobby.mods.map(m => m.shortMod).join(", ")}`);
+                log(matchup, `Map picked: ${mpLobby.beatmapId} with mods ${mpLobby.mods?.map(m => m.shortMod).join(", ") || "freemod"}`);
                 autoStart = true;
             } catch (ex) {
                 await mpChannel.sendMessage(`Error loading beatmap: ${ex}`);
                 log(matchup, `Error loading beatmap: ${ex}`);
+                console.log(ex);
             }
         }, matchup.streamer ? 30 * 1000 : leniencyTime);
     });
@@ -850,7 +853,7 @@ async function runMatchupListeners (matchup: Matchup, mpLobby: BanchoLobby, mpCh
             log(matchup, `Error while terminating lobby: ${err}`);
         } finally {
             await saveMessages();
-            await publish(centrifugoChannel, { type: "closed" }).catch((err) => log(matchup, `Error while publishing closed event: ${err}`));
+            publish(centrifugoChannel, { type: "closed" });
 
             state.runningMatchups--;
             delete state.matchups[matchup.ID];
@@ -867,7 +870,7 @@ export default async function runMatchup (matchup: Matchup, replace = false, aut
         lobbyName = `${matchup.stage!.tournament.abbreviation}: (${convertDateToDDDHH(matchup.date)} QL) vs (${matchup.teams?.map(team => team.abbreviation).join(", ")})`;
 
     log(matchup, `Creating lobby with name ${lobbyName}`);
-    const mpChannel = await banchoClient.createLobby(lobbyName, matchup.stage!.stageType === StageType.Qualifiers);
+    const mpChannel = await banchoClient.createLobby(lobbyName);
     const mpLobby = mpChannel.lobby;
     log(matchup, `Created lobby with name ${lobbyName} and ID ${mpLobby.id}`);
 
@@ -1006,7 +1009,7 @@ export default async function runMatchup (matchup: Matchup, replace = false, aut
             invCollector.on("end", async () => {
                 if (!invMessage.deletable)
                     return;
-                await invMessage.delete();
+                await invMessage.delete().catch((err) => log(matchup, `Error while deleting invite message: ${err}`));
             });
             log(matchup, `Created invite message for ${IDs.length} players`);
         }

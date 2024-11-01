@@ -304,12 +304,11 @@ async function run (m: Message | ChatInputCommandInteraction) {
 
         matchup.date = date;
         matchup.mp = null;
-        const messages = await MatchupMessage
-            .createQueryBuilder("matchupMessage")
-            .innerJoin("matchupMessage.matchup", "matchup")
-            .where("matchup.ID = :ID", { ID: matchup.ID })
-            .getMany();
-        await Promise.all(messages.map(message => message.remove()));
+        await MatchupMessage
+            .createQueryBuilder()
+            .delete()
+            .where("matchupID = :ID", { ID: matchup.ID })
+            .execute();
         matchup.messages = null;
 
         const sets = await MatchupSet
