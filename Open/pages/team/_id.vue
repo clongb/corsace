@@ -98,6 +98,7 @@
                             <div>{{ Math.round(teamData.BWS) }} {{ $t('open.teams.averageBWS') }}</div>
                             <div>#{{ Math.round(teamData.rank) }} {{ $t('open.teams.averageRank') }}</div>
                             <div>{{ Math.round(teamData.pp) }} {{ $t('open.teams.averagePP') }}</div>
+                            <div>#{{ Math.round(teamData.seed) }} {{ $t('open.teams.seed') }}</div>
                         </div>
                         <div>
                             <span class="team__info_section--header">{{ $t('open.create.teamTimezone') }}</span>

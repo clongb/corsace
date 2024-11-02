@@ -13,6 +13,7 @@ export interface TeamList extends BaseTeam {
     pp: number;
     rank: number;
     BWS: number;
+    seed: number;
     members: MemberList[];
 }
 

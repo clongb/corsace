@@ -19,6 +19,7 @@ import getTeamInvites from "../../../functions/get/getTeamInvites";
 import { Stage } from "../../../../Models/tournaments/stage";
 import { User } from "../../../../Models/user";
 import { unallowedToPlay, TournamentRoleType } from "../../../../Interfaces/tournament";
+import { MatchupScore } from "../../../../Interfaces/matchup";
 import { publish } from "../../../functions/centrifugo";
 
 const teamRouter = new CorsaceRouter();
@@ -194,6 +195,97 @@ teamRouter.$post<{
             success: true,
             team: await team.teamInterface(true, true),
         };
+});
+
+teamRouter.$post("/", async (ctx) => {
+    const stage = await Stage
+        .createQueryBuilder("stage")
+        .innerJoin("stage.matchups", "matchup")
+        .innerJoinAndSelect("stage.tournament", "tournament")
+        .innerJoinAndSelect("tournament.organizer", "organizer")
+        .leftJoinAndSelect("tournament.roles", "roles")
+        .where("stage.name = 'Qualifiers'")
+        .getOne();
+
+    if (!stage) {
+        ctx.body = {
+            success: false,
+            error: "Stage not found",
+        };
+        return;
+    }
+
+    const tournament = await Tournament
+        .createQueryBuilder("tournament")
+        .leftJoinAndSelect("tournament.roles", "roles")
+        .innerJoinAndSelect("tournament.organizer", "organizer")
+        .where("tournament.ID = :tournamentID", { tournamentID: stage.tournament.ID })
+        .getOne();
+
+    if (!tournament) {
+        ctx.body = {
+            success: false,
+            error: "Tournament not found",
+        };
+        return;
+    }
+    
+    const rawScores = await Matchup
+        .createQueryBuilder("matchup")
+        .innerJoin("matchup.stage", "stage")
+        .innerJoin("stage.tournament", "tournament")
+        .innerJoin("matchup.sets", "set")
+        .innerJoin("set.maps", "map")
+        .innerJoin("map.map", "mappoolMap")
+        .innerJoin("mappoolMap.slot", "slot")
+        .innerJoin("map.scores", "score")
+        .innerJoin("score.user", "user")
+        .where("tournament.ID = :tournamentID", { tournamentID: tournament.ID })
+        .andWhere("stage.ID = :stageID", { stageID: stage.ID })
+        .select([
+            "user.osuUsername",
+            "user.osuUserid",
+            "score.score",
+            "slot.acronym",
+            "slot.ID",
+            "mappoolMap.order",
+        ])
+        .getRawMany();
+
+    const teams = await Team
+        .createQueryBuilder("team")
+        .innerJoinAndSelect("team.members", "member")
+        .innerJoinAndSelect("team.tournaments", "tournament")
+        .where("tournament.ID = :tournamentID", { tournamentID: stage.tournament.ID })
+        .getMany();
+    
+    const teamLookup = new Map<string, Team>();
+    teams.forEach(team => {
+        team.members.forEach(member => {
+            teamLookup.set(member.osu.userID, team);
+        });
+    });
+
+    const scores: MatchupScore[] = rawScores.map(score => {
+        const team = teamLookup.get(score.osuUserid) ?? { ID: -1, name: "N/A", avatarURL: undefined };
+        return {
+            teamID: team.ID,
+            teamName: team.name,
+            teamAvatar: team.avatarURL,
+            username: score.osuUsername,
+            userID: parseInt(score.osuUserid),
+            score: score.score_score,
+            map: `${score.slot_acronym}${score.mappoolMap_order}`,
+            mapID: parseInt(`${score.slot_ID}${score.mappoolMap_order}`),
+        };
+    });
+
+    for (const team of teams) {
+        team.calculateSeed(scores, tournament);
+        await team.save();
+    }
+
+    ctx.body = { success: true };
 });
 
 teamRouter.$post<{ avatar: string }>("/:teamID/avatar", isLoggedInDiscord, validateTeam(true), async (ctx) => {
@@ -385,6 +477,7 @@ teamRouter.$post("/:teamID/register", isLoggedInDiscord, validateTeam(true), asy
         pp: team.pp,
         BWS: team.BWS,
         rank: team.rank,
+        seed: team.seed,
         members: team.members.map<TeamMember>(m => ({
             ID: m.ID,
             username: m.osu.username,

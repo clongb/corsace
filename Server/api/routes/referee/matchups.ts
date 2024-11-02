@@ -57,6 +57,7 @@ refereeMatchupsRouter.$get<{ matchups: MatchupList[] }>("/:tournamentID", valida
                     pp: team.pp,
                     rank: team.rank,
                     BWS: team.BWS,
+                    seed: team.seed,
                     members: [],
                 })),
                 team1Score: matchup.team1Score,

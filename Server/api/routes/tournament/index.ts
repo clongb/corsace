@@ -174,6 +174,7 @@ tournamentRouter.$get<{ teams: TeamList[] }>("/:tournamentID/teams", validateID,
                 pp: t.pp,
                 BWS: t.BWS,
                 rank: t.rank,
+                seed: t.seed,
                 members: members.map<TeamMember>(m => ({
                     ID: m.ID,
                     username: m.osu.username,
@@ -230,6 +231,7 @@ tournamentRouter.$get<{ teams: TeamList[] }>("/:tournamentID/unregisteredTeams",
                 pp: t.pp,
                 BWS: t.BWS,
                 rank: t.rank,
+                seed: t.seed,
                 members: members.map<TeamMember>(m => ({
                     ID: m.ID,
                     username: m.osu.username,
@@ -314,6 +316,7 @@ tournamentRouter.$get<{ qualifiers: BaseQualifier[] }>("/:tournamentID/qualifier
                         pp: t.pp,
                         rank: t.rank,
                         BWS: t.BWS,
+                        seed: t.seed,
                         members: members.map<TeamMember>((member) => {
                             return {
                                 ID: member.ID,

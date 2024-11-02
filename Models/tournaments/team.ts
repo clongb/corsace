@@ -3,6 +3,7 @@ import { User } from "../user";
 import { Tournament } from "./tournament";
 import { TeamInvite } from "./teamInvite";
 import { Matchup } from "./matchup";
+import { MatchupScore, MatchupScoreView, computeScoreViews, scoreSortType } from "../../Interfaces/matchup";
 import { Team as TeamInterface, TeamMember } from "../../Interfaces/team";
 import { BaseTournament } from "../../Interfaces/tournament";
 import { MatchupSet } from "./matchupSet";
@@ -53,6 +54,9 @@ export class Team extends BaseEntity {
 
     @Column("double")
         pp!: number;
+
+    @Column("double")
+        seed!: number;    
 
     @OneToMany(() => Matchup, matchup => matchup.team1)
         matchupsAsTeam1!: Matchup[];
@@ -154,6 +158,7 @@ export class Team extends BaseEntity {
             pp: this.pp,
             BWS: this.BWS,
             rank: this.rank,
+            seed: this.seed,
             tournaments,
             qualifier: qualifier ? {
                 ID: qualifier.ID,
@@ -162,5 +167,29 @@ export class Team extends BaseEntity {
                 mp: qualifier.mp,
             } : undefined,
         };
+    }
+
+    public calculateSeed (scores: MatchupScore[], tournament: Tournament) {
+        const syncView = "teams";
+        const currentFilter: scoreSortType = "zScore";
+        const mapSort = -1;
+        const sortDir = "desc"; 
+
+        const scoreViews: MatchupScoreView[] = computeScoreViews(
+            score => ({ id: score.teamID, name: score.teamName, avatar: `https://a.ppy.sh/${score.teamID}` }),
+            scores,
+            syncView,
+            currentFilter,
+            mapSort,
+            sortDir,
+            tournament?.matchupSize ?? 4
+        );
+
+        console.log(scoreViews);
+
+        for (const view of scoreViews) {
+            if (view.ID == this.ID)
+                this.seed = view.sortPlacement;
+        }
     }
 }

@@ -733,6 +733,7 @@
             "averageBWS": "Average BWS",
             "averageRank": "Average Rank",
             "averagePP": "Average PP",
+            "seed": "Qualifier Seed",
             "editQualifierTime": "edit qualifier time",
             "deleteQualifier": "delete qualifier/unregister team",
             "createJoinQualifier": "create/join qualifier",

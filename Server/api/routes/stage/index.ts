@@ -100,6 +100,7 @@ stageRouter.$get<{ matchups: MatchupList[] }>("/:stageID/matchups", async (ctx) 
                     pp: team.pp,
                     rank: team.rank,
                     BWS: team.BWS,
+                    seed: team.seed,
                     members: members.map<TeamMember>((member) => {
                         return {
                             ID: member.ID,
@@ -144,6 +145,7 @@ stageRouter.$get<{ matchups: MatchupList[] }>("/:stageID/matchups", async (ctx) 
                         pp: 0,
                         rank: 0,
                         BWS: 0,
+                        seed: 0,
                     })));
                 }
                 const prevLoserMatchups: (Omit<Matchup, "team1" | "team2" | "teams"> & { team1: number; team2: number; teams: number[] })[] = await Matchup
@@ -165,6 +167,7 @@ stageRouter.$get<{ matchups: MatchupList[] }>("/:stageID/matchups", async (ctx) 
                         pp: 0,
                         rank: 0,
                         BWS: 0,
+                        seed: 0,
                     })));
                 }
             }
